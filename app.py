@@ -18,6 +18,8 @@ from controllers.preset_controller import PresetController
 from ui.confirm_dialog import ConfirmationDialog
 from ui.save_preset_dialog import SavePresetDialog
 from ui.logging_utils import QueueLogHandler
+from ui.port_select_dialog import PortSelectDialog
+from controllers.app_state import AppState
 
 from ui.panels.base_panel import BasePanel
 from ui.panels.device_panel import DevicePanel
@@ -46,6 +48,9 @@ class App(ctk.CTk):
             pass
 
         # Controllers
+        # Load preferred port if not explicitly provided
+        if not explicit_port:
+            explicit_port = AppState.get_preferred_port() or None
         self.settings = SettingsController(explicit_port=explicit_port)
         self._connected_port: Optional[str] = None
         self._orig_model: Optional[DeviceModel] = None
@@ -122,6 +127,12 @@ class App(ctk.CTk):
         self.presets = PresetController()
         self._refresh_preset_menu()
         self.after(150, self._poll_logs)
+        # If we booted with a preferred explicit port, auto-attempt connect once the UI is up
+        try:
+            if AppState.get_preferred_port():
+                self.after(500, self._on_detect_clicked)
+        except Exception:
+            pass
 
     def _build_preset_bar(self, parent: ctk.CTkFrame):
         parent.columnconfigure(1, weight=1)
@@ -289,9 +300,52 @@ class App(ctk.CTk):
         try:
             port = self.settings.connect_autodetect_if_single()
             if not port:
-                self._log(f"Detect failed: {self.settings.last_error()}")
-                self._set_busy(False, "")
-                return
+                err = self.settings.last_error() or {}
+                # If multiple candidates, ask user which to use
+                if err.get("code") == "multiple_candidates":
+                    cands = err.get("candidates") or []
+                    selected_port_holder = {"port": ""}
+                    done = threading.Event()
+
+                    def _ask():
+                        try:
+                            choice, remember = PortSelectDialog.ask(self, cands)
+                            selected_port_holder["port"] = choice or ""
+                            selected_port_holder["remember"] = bool(remember)
+                        finally:
+                            done.set()
+
+                    # Open dialog on UI thread
+                    self.after(0, _ask)
+                    # Block worker until user closes dialog
+                    done.wait()
+                    choice = selected_port_holder["port"] or ""
+                    if choice == "":
+                        self._log("Detect cancelled by user.")
+                        self._set_busy(False, "")
+                        return
+                    # Try connecting to the selected port
+                    port = self.settings.connect_explicit(choice)
+                    if not port:
+                        self._log(f"Open failed: {self.settings.last_error()}")
+                        self._set_busy(False, "")
+                        return
+                    # If user asked to remember, store for next time
+                    if selected_port_holder.get("remember"):
+                        AppState.set_preferred_port(choice)
+                    else:
+                        # If previously remembered, clear it
+                        AppState.clear_preferred_port()
+                else:
+                    self._log(f"Detect failed: {err}")
+                    try:
+                        if (err.get("code") == "open_failed") and AppState.get_preferred_port():
+                            AppState.clear_preferred_port()
+                            self._log("Cleared remembered port due to open failure.")
+                    except Exception:
+                        pass
+                    self._set_busy(False, "")
+                    return
 
             self._connected_port = port
             model = self.settings.fetch_device_model(close_after_fetch=True)

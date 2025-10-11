@@ -1,0 +1,115 @@
+# --- Python bytecode & cache ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+
+# --- C extensions ---
+*.so
+
+# --- Environments ---
+.venv/
+venv/
+ENV/
+env/
+.env
+.env.*
+.python-version
+__pypackages__/
+
+# --- Packaging / build artifacts ---
+.build/
+build/
+dist/
+.eggs/
+*.egg-info/
+.eggs/
+*.egg
+wheels/
+share/python-wheels/
+MANIFEST
+
+# PyInstaller / cx_Freeze
+*.spec
+*.manifest
+
+# --- Installer logs ---
+pip-log.txt
+pip-delete-this-directory.txt
+
+# --- Test & coverage ---
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache/
+.pytest_cache/
+hypothesis/
+.hypothesis/
+htmlcov/
+coverage.xml
+*.cover
+*.py,cover
+pytestdebug.log
+
+# --- Linters / type checkers ---
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pyre/
+.pytype/
+.ruff_cache/
+.pylint.d/
+
+# --- Jupyter / notebooks (not typical here, but safe) ---
+.ipynb_checkpoints/
+*.ipynb
+
+# --- IDE / Editor ---
+# VS Code: ignore everything by default but allow common shared files if present
+.vscode/*
+!.vscode/extensions.json
+!.vscode/launch.json
+!.vscode/settings.json
+!.vscode/tasks.json
+
+# JetBrains
+.idea/
+*.iml
+
+# Sublime
+*.sublime-project
+*.sublime-workspace
+
+# --- OS junk ---
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# --- Logs & temp ---
+*.log
+logs/
+*.tmp
+*.temp
+tmp/
+temp/
+
+# --- Local data caches ---
+*.sqlite3
+*.db
+
+# --- Project-specific ---
+# Meshtastic CLI may be dropped locally; keep out of repo
+meshtastic
+meshtastic.exe
+
+# Common resource/output folders created during experiments
+output/
+resources/

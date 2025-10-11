@@ -103,6 +103,22 @@ class SettingsController:
             self._dc = None
             return None
 
+    def connect_explicit(self, port: str) -> Optional[str]:
+        """
+        Connect to the provided port and store controller; returns the port on success, else None
+        and populates last_error.
+        """
+        self._last_error = None
+        try:
+            self._dc = DeviceController(port=port)
+            self._explicit_port = port
+            return port
+        except Exception as e:
+            self._last_error = {"code": "open_failed", "detail": str(e)}
+            log.exception("Failed to open explicit port %s", port)
+            self._dc = None
+            return None
+
     # ---------------- Snapshot / Refresh ----------------
 
     def fetch_device_model(self, close_after_fetch: bool = False) -> DeviceModel:
