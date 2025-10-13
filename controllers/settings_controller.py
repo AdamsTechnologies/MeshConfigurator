@@ -6,7 +6,6 @@ import logging
 from typing import Optional, List, Dict, Any, Tuple
 
 from serial.tools import list_ports
-# Use package-absolute imports for robustness
 from controllers.device_controller import DeviceController
 from models.device_model import DeviceModel, MeshChannel
 
@@ -367,9 +366,9 @@ class SettingsController:
     def _get_cache_path(self) -> str:
         try:
             base = os.path.expanduser("~")
-            return os.path.join(base, ".mesh_configurator.json")
+            return os.path.join(base, ".meshtastic_config_presets/mesh_configurator.json")
         except Exception:
-            return ".mesh_configurator.json"
+            return ".meshtastic_config_presets/mesh_configurator.json"
 
     def _load_last_good_port(self) -> Optional[str]:
         try:

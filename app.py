@@ -55,7 +55,6 @@ class App(ctk.CTk):
         self.log_q: "queue.Queue[str]" = queue.Queue()
         qh = QueueLogHandler(self.log_q)
         qh.setLevel(logging.INFO)
-        # Re-include timestamp and level in log lines
         qh.setFormatter(logging.Formatter("%(asctime)s — %(levelname)s — %(message)s", "%H:%M:%S"))
         root_logger = logging.getLogger()
         try:
@@ -303,11 +302,36 @@ class App(ctk.CTk):
             if not candidates:
                 code = err.get("code")
                 if code == "no_candidates":
-                    self._log("No serial devices detected. Check your cable or drivers.")
+                    # Actively search for a short window in case OS is still enumerating the device
+                    self._log("No serial devices detected. Searching for a device…")
+                    found: List[Dict[str, Any]] = []
+                    deadline = time.monotonic() + 8.0
+                    while time.monotonic() < deadline:
+                        try:
+                            found = self.settings.detect_candidates() or []
+                        except Exception:
+                            found = []
+                        if found:
+                            break
+                        time.sleep(0.5)
+                    if not found:
+                        self._log("No serial devices detected. Check your cable or drivers.")
+                        self._set_busy(False, "")
+                        return
+                    # Try auto-connect once more with newly detected candidates
+                    port2, candidates2 = self.settings.auto_connect_or_candidates()
+                    if port2:
+                        self._connected_port = port2
+                        model = self.settings.fetch_device_model(close_after_fetch=True)
+                        self._orig_model = model
+                        self.after(0, lambda m=model: self._on_connected_success(m))
+                        return
+                    # Fall through to picker using the fresh candidate list
+                    candidates = candidates2 or found
                 else:
                     self._log(f"Detect failed: {err}")
-                self._set_busy(False, "")
-                return
+                    self._set_busy(False, "")
+                    return
 
             self._log("Warning: Multiple serial devices detected. Please select your device from the list below.")
             try:

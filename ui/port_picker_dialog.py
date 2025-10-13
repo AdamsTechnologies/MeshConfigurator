@@ -1,7 +1,5 @@
 from __future__ import annotations
-
 from typing import List, Dict, Any, Callable, Optional
-
 import customtkinter as ctk
 
 
