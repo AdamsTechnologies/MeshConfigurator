@@ -6,7 +6,6 @@ import logging
 from typing import Optional, List, Dict, Any, Tuple
 
 from serial.tools import list_ports
-# Use package-absolute imports for robustness
 from controllers.device_controller import DeviceController
 from models.device_model import DeviceModel, MeshChannel
 
@@ -30,6 +29,7 @@ class SettingsController:
         # Persistence for last good port
         self._cache_path = self._get_cache_path()
         self._last_good_port: Optional[str] = self._load_last_good_port()
+        self._probe_recent: Dict[str, float] = {}
 
     # ---------------- Detection ----------------
 
@@ -185,13 +185,22 @@ class SettingsController:
             self._dc = None
             return None
 
-    def _probe_port(self, port: str, timeout_s: float = 5.0) -> bool:
+    def _probe_port(self, port: str, timeout_s: float = 2.5) -> bool:
         """
         Lightweight probe to see if a Meshtastic interface responds.
         Tries to instantiate a temporary DeviceController and call identity().
         Returns True if identity appears valid.
         """
         import threading as _threading
+        import time as _time
+
+        # Skip if probed recently to avoid churn/port contention
+        try:
+            last = float(self._probe_recent.get(port, 0.0))
+            if _time.monotonic() - last < 5.0:
+                return False
+        except Exception:
+            pass
         result = {"ok": False}
 
         def _worker():
@@ -212,6 +221,10 @@ class SettingsController:
         t = _threading.Thread(target=_worker, daemon=True)
         t.start()
         t.join(timeout=timeout_s)
+        try:
+            self._probe_recent[port] = _time.monotonic()
+        except Exception:
+            pass
         return bool(result.get("ok"))
 
     def auto_connect_or_candidates(self) -> Tuple[Optional[str], List[Dict[str, Any]]]:
@@ -353,9 +366,9 @@ class SettingsController:
     def _get_cache_path(self) -> str:
         try:
             base = os.path.expanduser("~")
-            return os.path.join(base, ".mesh_configurator.json")
+            return os.path.join(base, ".meshtastic_config_presets/mesh_configurator.json")
         except Exception:
-            return ".mesh_configurator.json"
+            return ".meshtastic_config_presets/mesh_configurator.json"
 
     def _load_last_good_port(self) -> Optional[str]:
         try:
