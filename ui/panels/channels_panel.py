@@ -208,7 +208,6 @@ class ChannelsPanel(BasePanel):
 
     def _on_add_channel_clicked(self):
         existing_indices = {cf.index for cf in self._channel_frames}
-        # --- REFACTORED ---
         # Next index starts searching from 1
         next_idx = 1
         while next_idx in existing_indices:
