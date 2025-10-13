@@ -55,7 +55,6 @@ class App(ctk.CTk):
         self.log_q: "queue.Queue[str]" = queue.Queue()
         qh = QueueLogHandler(self.log_q)
         qh.setLevel(logging.INFO)
-        # Re-include timestamp and level in log lines
         qh.setFormatter(logging.Formatter("%(asctime)s — %(levelname)s — %(message)s", "%H:%M:%S"))
         root_logger = logging.getLogger()
         try:
