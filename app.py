@@ -318,6 +318,11 @@ class App(ctk.CTk):
                 pass
 
             def _show_picker():
+                # Clear busy state before showing selection UI
+                try:
+                    self._set_busy(False, "Select a device")
+                except Exception:
+                    pass
                 def _refresh() -> List[Dict[str, Any]]:
                     try:
                         fresh = self.settings.detect_candidates()

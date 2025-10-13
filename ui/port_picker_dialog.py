@@ -63,10 +63,10 @@ class PortPickerDialog(ctk.CTkToplevel):
         btn_wrap.grid(row=0, column=0, sticky="e")
         self._btn_connect = ctk.CTkButton(btn_wrap, text="Connect", command=self._on_connect)
         self._btn_connect.pack(side="right", padx=(6, 0))
-        btn_refresh = ctk.CTkButton(btn_wrap, text="Refresh", command=self._on_refresh)
-        btn_refresh.pack(side="right")
-        btn_cancel = ctk.CTkButton(btn_wrap, text="Cancel", command=self._on_cancel)
-        btn_cancel.pack(side="right", padx=(0, 6))
+        self._btn_refresh = ctk.CTkButton(btn_wrap, text="Refresh", command=self._on_refresh)
+        self._btn_refresh.pack(side="right")
+        self._btn_cancel = ctk.CTkButton(btn_wrap, text="Cancel", command=self._on_cancel)
+        self._btn_cancel.pack(side="right", padx=(0, 6))
 
         self.bind("<Return>", lambda _e: self._on_connect())
         self.bind("<Escape>", lambda _e: self._on_cancel())
@@ -129,14 +129,42 @@ class PortPickerDialog(ctk.CTkToplevel):
             if not port:
                 self._status.configure(text="Select a port.")
                 return
-            ok = self._connect_fn(str(port))
-            if ok:
-                self.result = str(port)
-                self.destroy()
-            else:
-                self._status.configure(text=f"Failed to connect on {port}. Please select another port or retry.")
+            # Run connect asynchronously to avoid freezing UI
+            self._set_busy(True, msg=f"Connecting to {port}…")
+
+            def _work():
+                ok = False
+                try:
+                    ok = bool(self._connect_fn(str(port)))
+                except Exception:
+                    ok = False
+                def _done():
+                    if ok:
+                        self.result = str(port)
+                        self.destroy()
+                    else:
+                        self._status.configure(text=f"Failed to connect on {port}. Please select another port or retry.")
+                        self._set_busy(False)
+                try:
+                    self.after(0, _done)
+                except Exception:
+                    pass
+
+            import threading as _threading
+            _threading.Thread(target=_work, daemon=True).start()
         except Exception as e:
             self._status.configure(text=str(e))
+
+    def _set_busy(self, busy: bool, msg: Optional[str] = None) -> None:
+        try:
+            state = "disabled" if busy else "normal"
+            self._btn_connect.configure(state=state)
+            self._btn_refresh.configure(state=state)
+            self._btn_cancel.configure(state=state)
+            if msg is not None:
+                self._status.configure(text=msg if busy else "")
+        except Exception:
+            pass
 
     def _on_cancel(self) -> None:
         self.result = None
@@ -166,4 +194,3 @@ class PortPickerDialog(ctk.CTkToplevel):
         dlg = PortPickerDialog(parent, candidates=candidates, refresh_fn=refresh_fn, connect_fn=connect_fn, default_index=default_index)
         parent.wait_window(dlg)
         return dlg.result
-
