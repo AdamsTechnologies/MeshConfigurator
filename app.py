@@ -29,6 +29,7 @@ from ui.panels.display_panel import DisplayPanel
 from ui.panels.bluetooth_panel import BluetoothPanel
 from ui.panels.network_panel import NetworkPanel
 from ui.panels.modules_panel import ModulesPanel
+from ui.port_picker_dialog import PortPickerDialog
 
 log = logging.getLogger(__name__)
 
@@ -54,6 +55,8 @@ class App(ctk.CTk):
         self.log_q: "queue.Queue[str]" = queue.Queue()
         qh = QueueLogHandler(self.log_q)
         qh.setLevel(logging.INFO)
+        # Re-include timestamp and level in log lines
+        qh.setFormatter(logging.Formatter("%(asctime)s — %(levelname)s — %(message)s", "%H:%M:%S"))
         root_logger = logging.getLogger()
         try:
             for _h in list(root_logger.handlers):
@@ -287,39 +290,90 @@ class App(ctk.CTk):
             
     def _detect_worker(self):
         try:
-            port = self.settings.connect_autodetect_if_single()
-            if not port:
-                self._log(f"Detect failed: {self.settings.last_error()}")
+            self._log("Scanning serial ports…")
+            port, candidates = self.settings.auto_connect_or_candidates()
+            if port:
+                self._connected_port = port
+                model = self.settings.fetch_device_model(close_after_fetch=True)
+                self._orig_model = model
+                self.after(0, lambda m=model: self._on_connected_success(m))
+                return
+
+            err = self.settings.last_error() or {}
+            if not candidates:
+                code = err.get("code")
+                if code == "no_candidates":
+                    self._log("No serial devices detected. Check your cable or drivers.")
+                else:
+                    self._log(f"Detect failed: {err}")
                 self._set_busy(False, "")
                 return
 
-            self._connected_port = port
-            model = self.settings.fetch_device_model(close_after_fetch=True)
-            self._orig_model = model
-            ident = f"{model.UserInfo.hwModel} | FW {model.MetaData.firmwareVersion}"
-            self._log(f"""Successfully Connected to: {(long_name:=getattr(model.UserInfo,'longName',None))}\n
-                port= {getattr(model.MetaData,'port',None)}
-                device model= {getattr(model.UserInfo,'hwModel',None)}
-                long name= {long_name}
-                device reboots= {getattr(model.MyInfo,'rebootCount',None)}
-                firmware= {getattr(model.MetaData,'firmwareVersion',None)}\n
-            """)
-            
-            def _apply_ui():
-                self._apply_model_to_all_panels(model)
-                try:
-                    self._update_device_info(model)
-                except Exception:
-                    pass
-                self.btn_apply.configure(state="normal")
-                self.btn_disconnect.configure(state="normal")
-                self._set_busy(False, "Connected")
+            self._log("Warning: Multiple serial devices detected. Please select your device from the list below.")
+            try:
+                self._log("Available devices:")
+                for c in candidates:
+                    self._log(f"- {c.get('product') or c.get('manufacturer') or c.get('description') or c.get('path')} | Port: {c.get('path')} | Score: {c.get('score')}" + (" | BT" if c.get('is_bluetooth') else ""))
+            except Exception:
+                pass
 
-            self.after(0, _apply_ui)
+            def _show_picker():
+                def _refresh() -> List[Dict[str, Any]]:
+                    try:
+                        fresh = self.settings.detect_candidates()
+                        self._log("Refreshed device list.")
+                        return fresh
+                    except Exception as e:
+                        self._log(f"Refresh failed: {e}")
+                        return []
+
+                def _connect_fn(p: str) -> bool:
+                    ok = bool(self.settings.try_connect(p))
+                    if ok:
+                        self._connected_port = p
+                    return ok
+
+                selected = PortPickerDialog.pick_port(self, candidates, _refresh, _connect_fn, default_index=0)
+                if selected:
+                    try:
+                        model = self.settings.fetch_device_model(close_after_fetch=True)
+                        self._orig_model = model
+                        self._on_connected_success(model)
+                    except Exception as e:
+                        self._log(f"Failed to read device info after connect: {e}")
+                        self._set_busy(False, "")
+                else:
+                    self._set_busy(False, "")
+
+            self.after(0, _show_picker)
         except Exception as e:
             log.exception("Detect failed")
             self._log(f"Detect failed: {e}")
             self._set_busy(False, "")
+
+    def _on_connected_success(self, model: DeviceModel) -> None:
+        try:
+            ident = f"{getattr(model.UserInfo,'hwModel',None)} | FW {getattr(model.MetaData,'firmwareVersion',None)}"
+            long_name = getattr(model.UserInfo, 'longName', None)
+            self._log(
+                "Successfully connected.\n"
+                f"    Port: {getattr(model.MetaData,'port',None)}\n"
+                f"    Device model: {getattr(model.UserInfo,'hwModel',None)}\n"
+                f"    Long name: {long_name}\n"
+                f"    Device reboots: {getattr(model.MyInfo,'rebootCount',None)}\n"
+                f"    Firmware: {getattr(model.MetaData,'firmwareVersion',None)}\n"
+            )
+            self._apply_model_to_all_panels(model)
+            try:
+                self._update_device_info(model)
+            except Exception:
+                pass
+            self.btn_apply.configure(state="normal")
+            self.btn_disconnect.configure(state="normal")
+            self._set_busy(False, f"Connected")
+            # self._set_busy(False, f"Connected: {ident}") # displaying the device indentity in the third action row now.
+        except Exception:
+            self._set_busy(False, "Connected")
 
     def _on_apply_clicked(self):
         if not self.panels["Channels"].validate_before_apply():
